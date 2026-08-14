@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Editor": {
+      "commandName": "Executable",
+      "executablePath": "../../../../../../../SteamLibrary/steamapps/common/sbox/sbox-dev.exe",
+      "commandLineArgs": "-project \u0022D:\\sbox\\games\\sbox-anyquarium\\Libraries\\sbox-mcp-plus\\sbox-mcp-plus.sbproj\u0022"
+    }
+  }
+}

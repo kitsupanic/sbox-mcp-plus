@@ -1,0 +1,14 @@
+{
+  "Title": "sbox-mcp-plus",
+  "Type": "library",
+  "Org": "kitsupanic",
+  "Ident": "sbox_mcp_plus",
+  "Schema": 1,
+  "IncludeSourceFiles": false,
+  "Resources": null,
+  "PackageReferences": [],
+  "EditorReferences": null,
+  "Mounts": null,
+  "IsStandaloneOnly": false,
+  "Metadata": {}
+}

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="img/logo.png" alt="sbox-mcp-plus" width="200" />
+</p>
+
 # sbox-mcp-plus
 
 Extensions to the s&box editor's built-in MCP server. The editor already runs an MCP

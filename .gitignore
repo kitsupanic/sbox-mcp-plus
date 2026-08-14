@@ -1,0 +1,14 @@
+# Engine-generated code editor files - the s&box editor regenerates these per machine.
+*.csproj
+Properties/
+*launchSettings.json
+obj/
+bin/
+.vs/
+.vscode/
+*.sln
+*.slnx
+
+# Editor/asset transients
+.sbox/
+*.generated.*

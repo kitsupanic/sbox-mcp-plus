@@ -53,6 +53,27 @@ Fields the built-in reports that this tool deliberately omits (tool count, compi
 status, engine paths): they come from engine-internal API a library can't reach, and
 the built-in `editor_status` still reports them correctly — use both.
 
+### `x_camera_screenshot`
+
+Render a scene camera to an image with UI text intact. Same arguments as the built-in
+`camera_screenshot` — `camera` (a CameraComponent id, its game object's id, or empty for
+the scene's main camera), `width`, `height`, `includeUi` — so it's a drop-in swap.
+
+Why it exists: the built-in `camera_screenshot` renders every Razor text label as a flat
+gray rectangle at any size other than the live viewport's. Upstream: issue
+[#11585](https://github.com/Facepunch/sbox-public/issues/11585). Engine root cause:
+`CameraComponent.ResizeUI` relayouts each screen panel for the offscreen size but omits
+`RootPanel.BuildDescriptors()`, so labels resized by that relayout release their text
+texture while the render descriptors still point at the dead one — `ScreenshotService`
+has the correct sequence (`PreLayout`/`CalculateLayout`/`PostLayout`/`BuildDescriptors`).
+
+In play mode `x_camera_screenshot` sidesteps it by capturing at exactly the current screen
+size, where the relayout changes no panel's size and no texture is released, then
+downscaling the capture to the requested dimensions. In edit mode there is no game
+viewport, so no live screen-size UI exists whose text textures a relayout could destroy,
+and it renders directly at the requested size — full detail, no resize step. Either way
+it works wherever `camera_screenshot` does.
+
 ## Known issues
 
 - The built-in `editor_status` is still broken while this library only routes around
@@ -63,5 +84,9 @@ the built-in `editor_status` still reports them correctly — use both.
   is the actionable part.
 - `x_open_scene` can't target a never-saved scene by path (it has no resource path
   yet) — use its name.
+- `x_camera_screenshot` output detail is capped at the live viewport's resolution in play
+  mode: it captures there and resizes, so a requested size larger than the viewport is
+  interpolation, not extra detail. Aspect ratio still follows the requested size. Edit
+  mode renders at the requested size directly and isn't capped.
 - Adding this library to a project doesn't take effect in an already-running editor:
   package mounting happens at project load, only source edits hotload. Restart once.

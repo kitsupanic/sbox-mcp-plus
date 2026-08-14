@@ -74,6 +74,64 @@ public static class ExtrasTools
 		};
 	}
 
+	/// <summary>
+	/// Render a camera in the scene and return it as an image, with UI text intact. Give any
+	/// CameraComponent's id or its game object's id, or nothing for the scene's main camera.
+	/// Use this instead of camera_screenshot whenever the shot includes Razor UI: camera_screenshot
+	/// renders every text label as a flat gray rectangle at any size other than the live viewport's,
+	/// because rendering offscreen relayouts the UI, which throws away each label's text texture
+	/// without rebuilding the render descriptors that point at it. In play mode this tool always
+	/// renders at the native screen resolution - where that relayout is a no-op, so the descriptors
+	/// stay valid - and downscales the result to the size you asked for: the output matches the
+	/// requested width and height exactly, but its detail is capped at the viewport's resolution,
+	/// so asking for more pixels than the viewport has gets you an upscale, not more detail. In
+	/// edit mode there is no game viewport, so no live screen-size UI exists to corrupt and it
+	/// renders directly at the requested size, at full detail - making this a drop in replacement
+	/// for camera_screenshot in both modes. find_game_objects with component 'Camera' lists the
+	/// cameras in a scene.
+	/// </summary>
+	/// <param name="camera">A CameraComponent id or its game object's id. Empty uses the scene's main camera.</param>
+	/// <param name="width">Image width in pixels.</param>
+	/// <param name="height">Image height in pixels.</param>
+	/// <param name="includeUi">Include any UI the camera renders.</param>
+	[McpTool.ReadOnly( "x_camera_screenshot" )]
+	public static object CameraScreenshotNative( string camera = "", [Sandbox.Range( 16, 4096 )] int width = 1280,
+		[Sandbox.Range( 16, 4096 )] int height = 720, bool includeUi = true )
+	{
+		var target = ResolveCamera( camera );
+
+		if ( !target.IsValid() )
+			throw new Exception( "The scene has no camera - find one with find_game_objects component 'Camera', or add one" );
+
+		// The one size the engine bug can't bite: identical to the screen, so the offscreen
+		// relayout changes no panel's size and no text texture gets released underneath its
+		// descriptor. Everything else is a downscale we do ourselves.
+		var nativeWidth = Screen.Width.CeilToInt();
+		var nativeHeight = Screen.Height.CeilToInt();
+
+		// No screen size means no game viewport - edit mode. Nothing live is laid out at the
+		// screen's size, so there are no text textures a relayout can destroy, and we can render
+		// straight at the size asked for, exactly as the built in camera_screenshot does.
+		if ( nativeWidth <= 1 || nativeHeight <= 1 )
+		{
+			var direct = new Bitmap( width, height );
+			target.RenderToBitmap( direct, includeUi );
+			return direct;
+		}
+
+		var bitmap = new Bitmap( nativeWidth, nativeHeight );
+		target.RenderToBitmap( bitmap, includeUi );
+
+		if ( nativeWidth == width && nativeHeight == height )
+			return bitmap;
+
+		// Resize hands back a new bitmap, so the native capture is ours to release
+		using ( bitmap )
+		{
+			return bitmap.Resize( width, height );
+		}
+	}
+
 	/// <summary>One scene tab open in the editor.</summary>
 	public class SceneTab
 	{
@@ -136,6 +194,43 @@ public static class ExtrasTools
 		return SceneEditorSession.All
 			.FirstOrDefault( x => string.Equals( x.Scene?.Name, nameOrPath, StringComparison.OrdinalIgnoreCase )
 				|| string.Equals( x.Scene?.Source?.ResourcePath, nameOrPath, StringComparison.OrdinalIgnoreCase ) );
+	}
+
+	/// <summary>
+	/// The camera a tool argument names - a CameraComponent id, or a game object id whose
+	/// CameraComponent we take. Empty means the active scene's main camera. The engine's own
+	/// resolvers are private to the tools addon, so this repeats them.
+	/// </summary>
+	private static CameraComponent ResolveCamera( string camera )
+	{
+		if ( string.IsNullOrWhiteSpace( camera ) )
+		{
+			var scene = SceneEditorSession.Active?.Scene ?? Game.ActiveScene
+				?? throw new Exception( "No scene is open in the editor" );
+
+			return scene.Camera;
+		}
+
+		if ( !Guid.TryParse( camera, out var guid ) )
+			throw new Exception( $"'{camera}' isn't a guid - find_game_objects and scene_tree show object ids, get_game_object shows component ids" );
+
+		foreach ( var session in SceneEditorSession.All )
+		{
+			if ( session.Scene?.Directory?.FindComponentByGuid( guid ) is Component component )
+			{
+				return component as CameraComponent
+					?? throw new Exception( "That component isn't a camera - give a CameraComponent or its game object" );
+			}
+
+			if ( session.Scene?.Directory?.FindByGuid( guid ) is GameObject go )
+			{
+				// includeDisabled, matching the built-in resolver's view of a game object's components
+				return go.Components.Get<CameraComponent>( true )
+					?? throw new Exception( $"'{go.Name}' has no camera component - find one with find_game_objects component 'Camera'" );
+			}
+		}
+
+		throw new Exception( $"Nothing in any open scene has id {guid} - find_game_objects and scene_tree show what's there" );
 	}
 
 	private static SceneTab Row( SceneEditorSession session, string message )

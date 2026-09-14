@@ -40,6 +40,17 @@ focus and the edit is silently lost. Upstream: issue
 - Refuses during play mode — `play_stop` first.
 - Refuses the running game session (it has no tab to switch to).
 
+### `x_create_scene`
+
+Create, save, and activate a new empty scene at a project-relative `.scene` path beneath
+`scenes/diagnostics/`. The optional `name` defaults to the destination file name.
+
+- Refuses play mode, absolute or traversing paths, paths outside the diagnostics folder,
+  wrong extensions, and existing destinations.
+- Saves directly through the editor asset system without a modal or file picker.
+- Leaves every existing tab—including unsaved work—unchanged.
+- Removes its temporary unsaved session and any partial asset if creation fails.
+
 ### `x_editor_status`
 
 What the editor is doing right now, from the editor's point of view: active scene tab

@@ -96,6 +96,54 @@ Hotload cancellation still protects asynchronous owned-instance termination. Mig
 
 Not implemented in this change. The engine writes one shared log tree rather than per-instance logs, so no bounded tail can be attributed to a specific owned child, and no path constraint could exclude unrelated or sensitive payloads reliably. If this is wanted later it needs a per-child log stream the engine does not currently provide.
 
+## Follow-up requirements discovered by M01
+
+The first installed-build smoke run proved hosting, one synthetic client, owned-process termination, disconnect, and clean teardown. It also exposed two remaining editor-tool gaps required before Kampai Roulette's F01 investigation can run safely.
+
+### `x_create_scene`
+
+Create and activate a new isolated scene through supported editor APIs. This is required for diagnostic probes that must not modify an existing gameplay or blockout scene.
+
+Proposed input:
+
+- `path`: required project-relative `.scene` path beneath `scenes/diagnostics/`;
+- `name`: optional scene name, defaulting from the file name.
+
+Required behavior:
+
+- Refuse while play mode is running.
+- Refuse absolute paths, traversal, paths outside `scenes/diagnostics/`, non-`.scene` extensions, and an existing destination.
+- Inspect the currently active scene first. Never close, reload, save, discard, or otherwise mutate its unsaved work.
+- Create a genuinely new editor scene through the installed editor's supported scene/session API; do not ask an MCP caller to synthesize raw scene JSON.
+- Save the new scene directly to the validated path without opening a modal or file picker, then make its tab active.
+- Return the same scene-tab identity fields as `x_open_scene`, including name, resource path, active state, unsaved state, and root-object count.
+- If creation or saving fails, leave the previous active scene and every existing file unchanged. Close or destroy only the unsaved session created by this call, without prompting.
+- Never overwrite an existing scene, even when its tab is closed.
+
+Acceptance checks:
+
+1. With a clean gameplay scene active, create `scenes/diagnostics/mcp-create-scene-check.scene`; verify the new empty scene is saved, active, and reported clean while the previous tab remains unchanged.
+2. Add an unsaved change to another scene, create a different diagnostic scene, and verify the unsaved scene remains open and dirty with its edit intact.
+3. Verify an existing destination, traversal, absolute path, wrong extension, path outside `scenes/diagnostics/`, and play-mode invocation are refused without creating or changing a file.
+4. Induce a save failure and verify no partial destination, modal, lost focus, or modified pre-existing scene remains.
+5. Delete the disposable acceptance scenes through a supported editor operation after verification; never hand-edit a scene file to perform the test.
+
+### Supported graceful-migration capability
+
+`x_network_migrate_to_new_instance` must remain fail-closed on installed build `26.09.08e`; connection counting or disconnecting the editor does not prove that a synthetic child can become host. Completing F01 requires a supported mechanism that targets or certifies the successor.
+
+Future implementation requirements:
+
+- Use only an installed public editor/engine API that explicitly initiates host handoff and identifies or certifies the selected successor.
+- Correlate the selected successor with the exact owned child identity established at launch.
+- Wait for the successor to be active before initiating handoff.
+- Return the previous host, selected successor, final local/host connection IDs, elapsed monotonic time, and a bounded timeout result.
+- On timeout or mismatch, report the session as uncertain; never claim migration succeeded from the old editor disconnecting or from a connection-count change.
+- Never terminate the user's editor to simulate graceful migration.
+- Preserve the current fixed refusal until all of these requirements are possible and verified against the installed build.
+
+Source-checkout APIs or a newer addon implementation may guide a future change, but they cannot establish installed capability. If no public installed API exists, this remains a platform/engine request rather than a library workaround.
+
 ## Public editor APIs
 
 The editor-side network operations use these installed public members:
@@ -126,7 +174,7 @@ All code belongs in the editor assembly. Do not expose these operations to shipp
 ## Acceptance checks
 
 1. Restart the editor after first installing the updated library.
-2. Confirm `list_toolsets` includes the seven new tools under `extras` and the three existing extras tools remain.
+2. Confirm `list_toolsets` includes the seven network tools and `x_create_scene` under `extras`, and that the three prior extras tools remain.
 3. Confirm the editor assembly compiles with zero errors.
 4. Call `x_network_status` while disconnected: inactive, non-host, non-client, no remote rows; `x_network_disconnect` refuses.
 5. Call `x_network_start_hosting`; verify play mode and host state, and that a second call refuses without a new lobby.

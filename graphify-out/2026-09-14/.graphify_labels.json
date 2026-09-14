@@ -1,0 +1,15 @@
+{
+  "0": "ExtrasTools",
+  "1": "NativeMethods",
+  "2": "NetworkToolLifetime",
+  "3": "OwnedInstanceRegistry",
+  "4": "Proposed toolset",
+  "5": ".TerminateAsync",
+  "6": "OwnedLocalInstance",
+  "7": ".LaunchContained",
+  "8": ".IsSignaled",
+  "9": "sbox-mcp-plus",
+  "10": ".OpenSceneTab",
+  "11": ".ValidateIdentity",
+  "12": "mcp.json"
+}

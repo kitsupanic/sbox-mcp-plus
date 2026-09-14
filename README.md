@@ -78,6 +78,37 @@ viewport, so no live screen-size UI exists whose text textures a relayout could 
 and it renders directly at the requested size — full detail, no resize step. Either way
 it works wherever `camera_screenshot` does.
 
+### Network and local instances
+
+Seven editor-only tools expose network state and safely manage local clients:
+
+- `x_network_status` — read the active session and privacy-limited connection rows.
+- `x_network_start_hosting` — start hosting through the supported editor path.
+- `x_network_disconnect` — disconnect without terminating owned clients.
+- `x_network_spawn_instance` — launch a fixed local client in a private Windows Job
+  Object. No arbitrary executable, environment, working directory, or arguments.
+- `x_network_instances` — list only clients launched by this library during the current
+  hotload lifetime.
+- `x_network_terminate_instance` — terminate an owned process tree using its PID and
+  exact `LaunchedAt` token. Default mode requests a graceful close before forcing the
+  private job; `abrupt=true` skips directly to forced termination.
+- `x_network_migrate_to_new_instance` — currently refuses before launching anything.
+  Installed engine build `26.09.08e` selects migration successors through Steam lobby
+  membership, which synthetic local clients cannot satisfy, and exposes no supported
+  targeted-handoff API.
+
+Ownership is in-memory and handle-based. The library starts each child suspended,
+assigns it to a private Job Object, captures its exact creation identity, and only then
+resumes it. It never reconstructs ownership from process enumeration or accepts a PID
+alone. Hotloading or restarting the library deliberately resets ownership without
+killing surviving clients; close those clients manually afterward.
+
+Network snapshots omit Steam/account identifiers, party data, credentials, chat, and
+voice. Display names are bounded, stripped of control characters, and redact common
+Steam identifier formats. `LogDirectory` identifies the shared engine log root; there
+is intentionally no instance-log tool because shared logs cannot be attributed safely
+to one child.
+
 ## Known issues
 
 - The built-in `editor_status` is still broken while this library only routes around

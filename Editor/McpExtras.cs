@@ -10,7 +10,7 @@ namespace Editor.Mcp;
 /// collide with the engine's own once the upstream equivalents land.
 /// </summary>
 [McpToolset( "extras", "Local extensions to the built-in MCP tools" )]
-public static class ExtrasTools
+public static partial class ExtrasTools
 {
 	/// <summary>
 	/// Make a scene the active editor tab, opening it from its asset path when it isn't open yet.

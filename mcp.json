@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "sbox": {
+      "type": "http",
+      "url": "http://127.0.0.1:7269/mcp"
+    }
+  }
+}

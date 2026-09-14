@@ -126,6 +126,7 @@ public static partial class ExtrasTools
 	}
 
 
+
 	/// <summary>
 	/// What the editor is doing right now - which project is open, which scene tab is active and
 	/// whether it has unsaved changes, and whether play mode is running or paused. ActiveScene here
@@ -263,6 +264,39 @@ public static partial class ExtrasTools
 		public Angles Angles { get; set; }
 	}
 
+	/// <summary>
+	/// Set one game object's saved networking mode in the active editor scene. The edit is undoable.
+	/// </summary>
+	/// <param name="id">Game object GUID from scene_tree or find_game_objects.</param>
+	/// <param name="mode">Never, Object, or Snapshot.</param>
+	[McpTool( "x_set_network_mode" )]
+	public static NetworkModeResult SetNetworkMode( string id, NetworkMode mode )
+	{
+		if ( Game.IsPlaying )
+			throw new Exception( "Can't change saved network mode while playing - play_stop first" );
+		if ( !Guid.TryParse( id, out var guid ) )
+			throw new Exception( $"'{id}' isn't a game object GUID" );
+
+		var session = SceneEditorSession.Active
+			?? throw new Exception( "No editor scene tab is active" );
+		var gameObject = session.Scene?.Directory?.FindByGuid( guid )
+			?? throw new Exception( $"No game object with id {guid} exists in the active scene" );
+
+		using ( session.UndoScope( "Set Network Mode" ).WithGameObjectChanges( gameObject, GameObjectUndoFlags.All ).Push() )
+		{
+			gameObject.NetworkMode = mode;
+		}
+
+		return new NetworkModeResult { Id = gameObject.Id, Name = gameObject.Name, Mode = gameObject.NetworkMode };
+	}
+
+	public class NetworkModeResult
+	{
+		public Guid Id { get; set; }
+		public string Name { get; set; }
+		public NetworkMode Mode { get; set; }
+	}
+
 	/// <summary>One scene tab open in the editor.</summary>
 	public class SceneTab
 	{
@@ -363,6 +397,7 @@ public static partial class ExtrasTools
 			throw new Exception( "Scene path isn't a valid project-relative path" );
 		}
 	}
+
 
 	/// <summary>
 	/// The camera a tool argument names - a CameraComponent id, or a game object id whose

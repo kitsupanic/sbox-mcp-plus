@@ -51,6 +51,7 @@ Create, save, and activate a new empty scene at a project-relative `.scene` path
 - Leaves every existing tab—including unsaved work—unchanged.
 - Removes its temporary unsaved session and any partial asset if creation fails.
 
+
 ### `x_editor_status`
 
 What the editor is doing right now, from the editor's point of view: active scene tab
@@ -61,12 +62,19 @@ active editor tab — while editing it returns a placeholder name (`"Scene"`) an
 path, and its dirty flag can describe a different scene than its name. Upstream: issue
 [#11639](https://github.com/Facepunch/sbox-public/issues/11639), PR
 [#11640](https://github.com/Facepunch/sbox-public/pull/11640) (closed unmerged).
+
 `x_editor_status` reads `SceneEditorSession.Active` — the same source `list_scenes`
 uses — so the two always agree.
 
 Fields the built-in reports that this tool deliberately omits (tool count, compile
 status, engine paths): they come from engine-internal API a library can't reach, and
 the built-in `editor_status` still reports them correctly — use both.
+
+### `x_set_network_mode`
+
+Set an active-scene game object's saved networking mode to `Never`, `Object`, or
+`Snapshot` by GUID. Refuses play mode and missing/background objects, records one undo
+step, and returns the resulting mode.
 
 ### `x_camera_screenshot`
 

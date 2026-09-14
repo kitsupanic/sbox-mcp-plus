@@ -89,6 +89,16 @@ viewport, so no live screen-size UI exists whose text textures a relayout could 
 and it renders directly at the requested size — full detail, no resize step. Either way
 it works wherever `camera_screenshot` does.
 
+### `x_camera_look_at`
+
+Aim a camera at a world-space point with the engine's `Rotation.LookAt` rather than
+requiring callers to derive Euler angles. Arguments are `camera` (a CameraComponent or
+camera game-object GUID), `target` (`x,y,z`), and optional `up` (`x,y,z`, default
+`0,0,1`). The camera must belong to the active editor scene.
+
+The operation rejects coincident camera/target positions and zero up vectors, records
+one undo step, and returns the resulting position, target, and angles.
+
 ### Network and local instances
 
 Seven editor-only tools expose network state and safely manage local clients:

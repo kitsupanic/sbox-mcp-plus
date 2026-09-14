@@ -210,6 +210,59 @@ public static partial class ExtrasTools
 		}
 	}
 
+	/// <summary>
+	/// Aim a camera game object at a world-space point using the engine's Rotation.LookAt.
+	/// The camera must belong to the active editor scene. The edit is undoable.
+	/// </summary>
+	/// <param name="camera">A CameraComponent id or its game object's id.</param>
+	/// <param name="target">World-space target as 'x,y,z'.</param>
+	/// <param name="up">World-space up direction as 'x,y,z'. Defaults to +Z.</param>
+	[McpTool( "x_camera_look_at" )]
+	public static CameraLookAtResult CameraLookAt( string camera, string target, string up = "0,0,1" )
+	{
+		if ( string.IsNullOrWhiteSpace( camera ) )
+			throw new Exception( "Give a CameraComponent or camera game object id - find_game_objects component 'Camera' lists them" );
+
+		var session = SceneEditorSession.Active
+			?? throw new Exception( "No editor scene tab is active" );
+		var component = ResolveCamera( camera );
+		if ( component.Scene != session.Scene )
+			throw new Exception( "The camera isn't in the active editor scene - use x_open_scene or switch_scene first" );
+
+		var targetPosition = Vector3.Parse( target );
+		var upDirection = Vector3.Parse( up );
+		var direction = targetPosition - component.WorldPosition;
+		if ( direction.LengthSquared < 0.000001f )
+			throw new Exception( "The camera position and look-at target must differ" );
+		if ( upDirection.LengthSquared < 0.000001f )
+			throw new Exception( "The look-at up direction must be non-zero" );
+
+		var gameObject = component.GameObject;
+		using ( session.UndoScope( "Aim Camera" ).WithGameObjectChanges( gameObject, GameObjectUndoFlags.All ).Push() )
+		{
+			gameObject.WorldRotation = Rotation.LookAt( direction.Normal, upDirection.Normal );
+		}
+
+		return new CameraLookAtResult
+		{
+			Id = gameObject.Id,
+			Name = gameObject.Name,
+			Position = gameObject.WorldPosition,
+			Target = targetPosition,
+			Angles = gameObject.WorldRotation.Angles()
+		};
+	}
+
+	/// <summary>The resulting camera aim.</summary>
+	public class CameraLookAtResult
+	{
+		public Guid Id { get; set; }
+		public string Name { get; set; }
+		public Vector3 Position { get; set; }
+		public Vector3 Target { get; set; }
+		public Angles Angles { get; set; }
+	}
+
 	/// <summary>One scene tab open in the editor.</summary>
 	public class SceneTab
 	{

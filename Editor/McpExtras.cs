@@ -2,6 +2,8 @@ using Sandbox;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 
 namespace Editor.Mcp;
 
@@ -13,6 +15,11 @@ namespace Editor.Mcp;
 [McpToolset( "extras", "Local extensions to the built-in MCP tools" )]
 public static partial class ExtrasTools
 {
+	private static readonly JsonSerializerOptions SceneJsonOptions = new( JsonSerializerOptions.Default )
+	{
+		WriteIndented = true
+	};
+
 	/// <summary>
 	/// Make a scene the active editor tab, opening it from its asset path when it isn't open yet.
 	/// Scene edits always target the active scene, so switch before editing a background scene.
@@ -61,22 +68,20 @@ public static partial class ExtrasTools
 		if ( Game.IsPlaying )
 			throw new Exception( "Can't create a scene while playing - play_stop first" );
 
-		var destination = ValidateDiagnosticScenePath( path );
-		var resourcePath = destination.RelativePath;
-		var sceneName = string.IsNullOrWhiteSpace( name )
-			? Path.GetFileNameWithoutExtension( resourcePath )
-			: name.Trim();
-
-		if ( File.Exists( destination.AbsolutePath ) || AssetSystem.FindByPath( resourcePath ) is not null )
-			throw new Exception( $"A scene already exists at '{resourcePath}' - choose a new diagnostic path" );
-
 		var previous = SceneEditorSession.Active;
 		SceneEditorSession created = null;
-		Asset asset = null;
-		var saved = false;
+		OwnedAssetFile destination = null;
+		var committed = false;
 
 		try
 		{
+			destination = OwnedAssetFile.Create( Project.Current?.GetAssetsPath(), path );
+			var resourcePath = destination.RelativePath;
+			var sceneName = string.IsNullOrWhiteSpace( name )
+				? Path.GetFileNameWithoutExtension( resourcePath )
+				: name.Trim();
+
+
 			created = SceneEditorSession.CreateDefault()
 				?? throw new Exception( "Couldn't create a new editor scene session" );
 
@@ -86,42 +91,49 @@ public static partial class ExtrasTools
 			scene.ProcessDeletes();
 			scene.Name = sceneName;
 
-			Directory.CreateDirectory( Path.GetDirectoryName( destination.AbsolutePath ) );
-
-			asset = AssetSystem.CreateResource( "scene", destination.AbsolutePath )
-				?? throw new Exception( $"Couldn't create the scene resource at '{resourcePath}'" );
-
 			var sceneFile = new SceneFile
 			{
 				Id = Guid.NewGuid(),
 				GameObjects = [],
 				SceneProperties = scene.SerializeProperties()
 			};
+			var json = sceneFile.Serialize().ToJsonString( SceneJsonOptions );
+			using ( var writer = new StreamWriter( destination.Content, new UTF8Encoding( false ), 1024, true ) )
+			{
+				writer.Write( json );
+				writer.Flush();
+			}
+			try { destination.Commit(); }
+			finally { committed = destination.IsCommitted; }
 
-			saved = asset.SaveToDisk( sceneFile );
-			if ( !saved )
-				throw new Exception( $"Couldn't save the new scene at '{resourcePath}'" );
+			var asset = AssetSystem.RegisterFile( destination.AbsolutePath )
+				?? throw new Exception( "Asset registration returned no scene asset." );
+			if ( !asset.Compile( false ) )
+				throw new Exception( "The registered scene did not compile successfully." );
 
 			created.Destroy();
 			created = null;
 
 			var opened = SceneEditorSession.CreateFromPath( resourcePath )
-				?? throw new Exception( $"The new scene was saved but couldn't be opened at '{resourcePath}'" );
+				?? throw new Exception( "The registered scene could not be opened." );
 
 			opened.MakeActive();
 			return Row( opened, $"Created '{opened.Scene?.Name}' at '{resourcePath}' and made it the active tab" );
 		}
-		catch
+		catch ( Exception exception )
 		{
 			created?.Destroy();
-
-			if ( asset is not null )
-				asset.Delete();
 
 			if ( previous is not null && previous != SceneEditorSession.Active )
 				previous.MakeActive();
 
+			if ( committed )
+				throw new Exception( $"Scene source was retained at '{destination.AbsolutePath}' after engine processing failed: {exception.Message}", exception );
 			throw;
+		}
+		finally
+		{
+			destination?.Dispose();
 		}
 	}
 
@@ -361,42 +373,7 @@ public static partial class ExtrasTools
 				|| string.Equals( x.Scene?.Source?.ResourcePath, nameOrPath, StringComparison.OrdinalIgnoreCase ) );
 	}
 
-	private static (string RelativePath, string AbsolutePath) ValidateDiagnosticScenePath( string path )
-	{
-		if ( string.IsNullOrWhiteSpace( path ) )
-			throw new Exception( "Give a project-relative .scene path beneath scenes/diagnostics/" );
 
-		var normalized = path.Trim().Replace( '\\', '/' );
-		if ( Path.IsPathRooted( normalized ) )
-			throw new Exception( "Scene path must be project-relative and beneath scenes/diagnostics/" );
-
-		if ( normalized.Split( '/', StringSplitOptions.RemoveEmptyEntries ).Contains( ".." ) )
-			throw new Exception( "Scene path can't contain traversal segments" );
-
-		if ( !string.Equals( Path.GetExtension( normalized ), ".scene", StringComparison.OrdinalIgnoreCase ) )
-			throw new Exception( "Scene path must use the .scene extension" );
-
-		if ( !normalized.StartsWith( "scenes/diagnostics/", StringComparison.OrdinalIgnoreCase )
-			|| normalized.Length == "scenes/diagnostics/".Length )
-			throw new Exception( "Scene path must be beneath scenes/diagnostics/" );
-
-		try
-		{
-			var assetsRoot = Path.GetFullPath( Project.Current.GetAssetsPath() );
-			var diagnosticsRoot = Path.GetFullPath( Path.Combine( assetsRoot, "scenes", "diagnostics" ) )
-				.TrimEnd( Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar ) + Path.DirectorySeparatorChar;
-			var absolute = Path.GetFullPath( Path.Combine( assetsRoot, normalized.Replace( '/', Path.DirectorySeparatorChar ) ) );
-
-			if ( !absolute.StartsWith( diagnosticsRoot, StringComparison.OrdinalIgnoreCase ) )
-				throw new Exception( "Scene path must be beneath scenes/diagnostics/" );
-
-			return (normalized, absolute);
-		}
-		catch ( Exception exception ) when ( exception is ArgumentException or NotSupportedException or PathTooLongException )
-		{
-			throw new Exception( "Scene path isn't a valid project-relative path" );
-		}
-	}
 
 
 	/// <summary>

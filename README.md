@@ -45,11 +45,17 @@ focus and the edit is silently lost. Upstream: issue
 Create, save, and activate a new empty scene at a project-relative `.scene` path beneath
 `scenes/diagnostics/`. The optional `name` defaults to the destination file name.
 
-- Refuses play mode, absolute or traversing paths, paths outside the diagnostics folder,
-  wrong extensions, and existing destinations.
-- Saves directly through the editor asset system without a modal or file picker.
+- Refuses play mode, unsafe or linked paths, paths outside the diagnostics folder,
+  wrong extensions, and any destination another actor already created.
+- Reserves the source with an owned `CREATE_NEW` handle and never adopts, truncates,
+  overwrites, or path-deletes another actor's file.
+- Before engine registration, verifies that the required handle-sharing transition retained the
+  same file identity, length, and SHA-256 bytes. An in-flight writer or a completed mutation or
+  replacement fails creation before engine exposure.
+- Removes only its handle-owned partial source when failure occurs before durable commit. Once
+  committed, registration, compilation, opening, or handoff-verification failures retain evidence
+  for diagnosis and report the exact source path.
 - Leaves every existing tab—including unsaved work—unchanged.
-- Removes its temporary unsaved session and any partial asset if creation fails.
 
 
 ### `x_editor_status`
@@ -154,3 +160,48 @@ to one child.
   mode renders at the requested size directly and isn't capped.
 - Adding this library to a project doesn't take effect in an already-running editor:
   package mounting happens at project load, only source edits hotload. Restart once.
+
+## Input observation and bounded traces
+
+- `x_input_observe(action="Attack1")` reads focus, suppression, mouse visibility,
+  action edges, numeric AnalogLook, scene identity and camera rotation.
+- `x_input_trace_start(sceneId, frameLimit=300, seconds=15, label="look-click", action="Attack1")`
+  records that raw snapshot once per editor frame in an already running, explicitly
+  identified Play scene. Obtain `sceneId` from `x_input_observe` after checking the
+  active project with `editor_status` and `x_editor_status`.
+- `x_input_trace_status()` reports the token, terminal reason, count and limits.
+- `x_input_trace_read(token, offset=0, count=60)` pages at most 90 snapshots.
+- `x_input_trace_stop(token)` stops only this recorder; repeated stop is safe.
+
+Bounds are 2..600 frames, 1..30 real seconds, and labels/action names up to 64
+characters. Duplicate active starts and wrong tokens fail. Recording terminates on
+observed Play exit, project/scene replacement, time or frame limit; it owns no Play
+session and never stops one. Terminal evidence remains until the next valid start
+or library hotload. It releases scene references when finished. Traces stay in memory;
+read/export before hotload. Paused Play can still record editor frames.
+
+These are **raw engine observations**: injected input cannot be distinguished
+universally from physical input. They do not instrument game consumers, assert
+command acceptance, or correlate screenshots atomically. Use project-specific hooks
+for HUD-before/after, consumed look, gameplay revisions and eligibility. No input is
+injected, clocks advanced, settings changed, processes launched or scenes modified.
+
+## Shared-source maintenance and checks
+
+The standalone repository is the canonical generic library. Kampai contains a
+vendored copy, not a second server. See [ownership, differences and verification](docs/MCP-PARITY.md).
+Before promoting a generic change, update both copies and run:
+
+```powershell
+pwsh -File Tests/Compare-Embedded.ps1 -EmbeddedRoot E:/game_dev/sbox/sbox-kampai-roulette/Libraries/kitsupanic.sbox_mcp_plus
+pwsh -File Tests/Compare-Embedded.ps1 -SelfTest
+dotnet run --project Tests/ModelImport.ContractTests.csproj
+# Focused buffer tests, no engine or Play needed:
+dotnet run --project Tests/ModelImport.ContractTests.csproj -- --input-trace-only
+```
+
+The .NET 10 harness uses real Windows file handles/races and fake asset backends.
+Three symlink fixtures require existing symlink privilege; failure to create their
+links is an environment blocker, never a passed rejection assertion. Do not alter
+permissions automatically. Engine compilation, MCP discovery, actual tool behavior,
+physical devices and release acceptance require separate evidence.

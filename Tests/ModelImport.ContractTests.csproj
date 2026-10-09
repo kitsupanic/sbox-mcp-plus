@@ -9,5 +9,7 @@
   <ItemGroup>
     <Compile Include="../Editor/ModelImportTransaction.cs" Link="ModelImportTransaction.cs" />
     <Compile Include="../Editor/ModelImportBackend.cs" Link="ModelImportBackend.cs" />
+    <Compile Include="../Editor/OwnedAssetFile.cs" Link="OwnedAssetFile.cs" />
+    <Compile Include="../Editor/InputTraceBuffer.cs" Link="InputTraceBuffer.cs" />
   </ItemGroup>
 </Project>

@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 using System.Text.Json;
 
 namespace Editor.Mcp;
@@ -21,11 +19,6 @@ internal sealed class ModelImportTransaction
 	{
 		".fbx", ".obj", ".dmx"
 	};
-	private static readonly HashSet<string> ReservedNames = new( StringComparer.OrdinalIgnoreCase )
-	{
-		"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-	};
 
 	internal string TransactionId { get; } = Guid.NewGuid().ToString( "D" );
 	internal string AssetsRoot { get; }
@@ -37,9 +30,9 @@ internal sealed class ModelImportTransaction
 	internal IReadOnlyList<CopyPlan> Copies { get; }
 	internal List<string> OwnedFiles { get; } = [];
 	internal List<string> CompletedCopies { get; } = [];
-	private readonly List<(string Path, SafeFileHandle Handle)> _directoryHandles = [];
-	private readonly Dictionary<string, FileStream> _ownedStreams = new( StringComparer.OrdinalIgnoreCase );
-	private FileStream _markerStream;
+	private readonly List<(string Path, OwnedAssetFile.DirectoryLease Handle)> _directoryHandles = [];
+	private readonly Dictionary<string, OwnedAssetFile> _ownedFiles = new( StringComparer.OrdinalIgnoreCase );
+	private OwnedAssetFile _markerFile;
 	internal List<string> CreatedDirectories { get; } = [];
 	internal bool EngineMutationAttempted { get; set; }
 
@@ -146,21 +139,16 @@ internal sealed class ModelImportTransaction
 			var directory = chain.Pop();
 			if ( !Directory.Exists( directory ) )
 			{
-				if ( CreateDirectoryW( directory, IntPtr.Zero ) ) CreatedDirectories.Add( directory );
-				else
-				{
-					var error = Marshal.GetLastWin32Error();
-					if ( error != 183 || !Directory.Exists( directory ) )
-						throw new ImportContractException( "CopyFailed", $"A destination ancestor could not be reserved (Windows error {error})." );
-				}
+				if ( OwnedAssetFile.TryCreateDirectory( directory, out var error ) ) CreatedDirectories.Add( directory );
+				else if ( error != 183 || !Directory.Exists( directory ) )
+					throw new ImportContractException( "CopyFailed", $"A destination ancestor could not be reserved (Windows error {error})." );
 			}
 			LockDirectory( directory );
 		}
-		if ( !CreateDirectoryW( FinalDirectory, IntPtr.Zero ) )
+		if ( !OwnedAssetFile.TryCreateDirectory( FinalDirectory, out var finalError ) )
 		{
-			var error = Marshal.GetLastWin32Error();
-			throw new ImportContractException( error == 183 ? "DestinationExists" : "CopyFailed",
-				error == 183 ? "The final import directory was created by another operation." : $"The final import directory could not be reserved (Windows error {error})." );
+			throw new ImportContractException( finalError == 183 ? "DestinationExists" : "CopyFailed",
+				finalError == 183 ? "The final import directory was created by another operation." : $"The final import directory could not be reserved (Windows error {finalError})." );
 		}
 		CreatedDirectories.Add( FinalDirectory );
 		LockDirectory( FinalDirectory );
@@ -175,9 +163,10 @@ internal sealed class ModelImportTransaction
 			try
 			{
 				using var input = new FileStream( copy.SourceAbsolute, FileMode.Open, FileAccess.Read, FileShare.Read, buffer.Length, FileOptions.SequentialScan );
-				var output = OpenOwnedFile( copy.DestinationAbsolute );
+				var owned = OwnedAssetFile.CreateInLockedDirectory( copy.DestinationAbsolute );
 				OwnedFiles.Add( copy.DestinationAbsolute );
-				_ownedStreams.Add( copy.DestinationAbsolute, output );
+				_ownedFiles.Add( copy.DestinationAbsolute, owned );
+				var output = owned.Content;
 				int read;
 				while ( (read = input.Read( buffer, 0, buffer.Length )) != 0 )
 				{
@@ -186,7 +175,7 @@ internal sealed class ModelImportTransaction
 						throw new ImportContractException( "LimitExceeded", "Selected files grew beyond 1,073,741,824 bytes while copying." );
 					output.Write( buffer, 0, read );
 				}
-				output.Flush( true );
+				owned.Flush();
 				CompletedCopies.Add( copy.DestinationAsset );
 			}
 			catch ( ImportContractException ) { throw; }
@@ -199,43 +188,33 @@ internal sealed class ModelImportTransaction
 	{
 		var marker = Path.Combine( FinalDirectory, MarkerName );
 		var json = JsonSerializer.Serialize( new Marker( 1, TransactionId, SourceAsset, ModelAsset, writerState ) );
-		if ( _markerStream is null )
+		if ( _markerFile is null )
 		{
-			_markerStream = OpenOwnedFile( marker );
+			_markerFile = OwnedAssetFile.CreateInLockedDirectory( marker );
 			OwnedFiles.Add( marker );
-			_ownedStreams.Add( marker, _markerStream );
+			_ownedFiles.Add( marker, _markerFile );
 		}
-		_markerStream.Position = 0;
-		_markerStream.SetLength( 0 );
-		using ( var writer = new StreamWriter( _markerStream, System.Text.Encoding.UTF8, 1024, true ) )
+		_markerFile.Content.Position = 0;
+		_markerFile.Content.SetLength( 0 );
+		using ( var writer = new StreamWriter( _markerFile.Content, System.Text.Encoding.UTF8, 1024, true ) )
 		{
 			writer.Write( json );
 			writer.Flush();
 		}
-		_markerStream.Flush( true );
+		_markerFile.Flush();
 	}
 
 	internal IReadOnlyList<string> CleanupPreEngine()
 	{
 		var remaining = new List<string>();
-		var handleOwned = _ownedStreams.Keys.ToHashSet( StringComparer.OrdinalIgnoreCase );
-		foreach ( var owned in _ownedStreams.ToArray() )
+		var handleOwned = _ownedFiles.Keys.ToHashSet( StringComparer.OrdinalIgnoreCase );
+		foreach ( var owned in _ownedFiles.ToArray() )
 		{
-			var disposition = new FileDispositionInfo { DeleteFile = true };
-			try
-			{
-				if ( !SetFileInformationByHandle( owned.Value.SafeFileHandle, 4, ref disposition, (uint)Marshal.SizeOf<FileDispositionInfo>() ) )
-					remaining.Add( ToReportedPath( owned.Key ) );
-			}
+			try { owned.Value.Dispose(); }
 			catch { remaining.Add( ToReportedPath( owned.Key ) ); }
-			finally
-			{
-				try { owned.Value.Dispose(); }
-				catch { remaining.Add( ToReportedPath( owned.Key ) ); }
-			}
 		}
-		_ownedStreams.Clear();
-		_markerStream = null;
+		_ownedFiles.Clear();
+		_markerFile = null;
 		foreach ( var file in OwnedFiles.Where( x => !handleOwned.Contains( x ) ) )
 			if ( File.Exists( file ) ) remaining.Add( ToReportedPath( file ) );
 		foreach ( var directory in CreatedDirectories )
@@ -254,7 +233,7 @@ internal sealed class ModelImportTransaction
 		.Append( SourceAsset ).Append( ModelAsset )
 		.Distinct( StringComparer.OrdinalIgnoreCase ).OrderBy( x => x, StringComparer.OrdinalIgnoreCase ).ToArray();
 
-	internal string ToReportedPath( string absolute ) => IsContained( AssetsRoot, absolute )
+	internal string ToReportedPath( string absolute ) => OwnedAssetFile.IsContained( AssetsRoot, absolute )
 		? Path.GetRelativePath( AssetsRoot, absolute ).Replace( '\\', '/' ) : absolute;
 
 	internal static string NormalizeTarget( string target )
@@ -275,15 +254,8 @@ internal sealed class ModelImportTransaction
 
 	internal static void ValidateFileName( string name, bool extensionAllowed )
 	{
-		if ( string.IsNullOrWhiteSpace( name ) || name != name.Trim() || name.EndsWith( ".", StringComparison.Ordinal ) )
-			throw new ImportContractException( "InvalidInput", "A planned filename is empty, whitespace-padded, or ends in a dot." );
-		if ( name.IndexOfAny( Path.GetInvalidFileNameChars() ) >= 0 || name.Contains( '/' ) || name.Contains( '\\' ) )
-			throw new ImportContractException( "InvalidInput", "A planned filename contains invalid characters or separators." );
-		if ( !extensionAllowed && Path.GetFileName( name ) != name )
-			throw new ImportContractException( "InvalidInput", "modelName must be a filename stem." );
-		var deviceStem = name.Split( '.', 2 )[0];
-		if ( ReservedNames.Contains( deviceStem ) )
-			throw new ImportContractException( "InvalidInput", "A planned filename is a reserved Windows device name." );
+		try { OwnedAssetFile.ValidateFileName( name, extensionAllowed ); }
+		catch ( ArgumentException exception ) { throw new ImportContractException( "InvalidInput", exception.Message ); }
 	}
 
 	internal static void EnsureNoReparsePoints( string root, string destination )
@@ -297,35 +269,29 @@ internal sealed class ModelImportTransaction
 	}
 	private void LockDirectory( string directory )
 	{
-		var handle = CreateFileHandle( directory, 0x80000000, 0x00000001 | 0x00000002, IntPtr.Zero, 3,
-			0x02000000 | 0x00200000, IntPtr.Zero );
-		if ( handle.IsInvalid ) throw new ImportContractException( "CopyFailed", "The destination ancestry could not be locked against replacement." );
-		if ( !GetFileInformationByHandle( handle, out var information ) || (information.FileAttributes & 0x400) != 0 )
+		try { _directoryHandles.Add( (directory, OwnedAssetFile.LockDirectory( directory )) ); }
+		catch ( OwnedAssetFile.ReparsePointException exception )
 		{
-			handle.Dispose();
-			throw new ImportContractException( "InvalidInput", "The destination chain contains or changed to a symbolic link or junction." );
+			throw new ImportContractException( "InvalidInput", exception.Message );
 		}
-		_directoryHandles.Add( (directory, handle) );
+		catch ( IOException )
+		{
+			throw new ImportContractException( "CopyFailed", "The destination ancestry could not be locked against replacement." );
+		}
 	}
 
-	private static FileStream OpenOwnedFile( string path )
+
+
+	private void DisposeOwnedFiles()
 	{
-		var handle = CreateFileHandle( path, 0x80000000 | 0x40000000 | 0x00010000, 0x00000001,
-			IntPtr.Zero, 1, 0x08000000, IntPtr.Zero );
-		if ( handle.IsInvalid )
-		{
-			var error = Marshal.GetLastWin32Error();
-			handle.Dispose();
-			throw new IOException( $"Exclusive file creation failed (Windows error {error})." );
-		}
-		return new FileStream( handle, FileAccess.ReadWrite, 128 * 1024, false );
+		foreach ( var file in _ownedFiles.Values ) file.Dispose();
+		_ownedFiles.Clear();
+		_markerFile = null;
 	}
 
 	private void DisposeHandles()
 	{
-		foreach ( var stream in _ownedStreams.Values ) stream.Dispose();
-		_ownedStreams.Clear();
-		_markerStream = null;
+		DisposeOwnedFiles();
 		foreach ( var entry in _directoryHandles ) entry.Handle.Dispose();
 		_directoryHandles.Clear();
 	}
@@ -333,18 +299,12 @@ internal sealed class ModelImportTransaction
 	internal void Dispose() => DisposeHandles();
 	internal void PrepareForEngineMutation()
 	{
-		foreach ( var stream in _ownedStreams.Values ) stream.Dispose();
-		_ownedStreams.Clear();
-		_markerStream = null;
+		foreach ( var file in _ownedFiles.Values ) file.CommitForRelease();
+		DisposeOwnedFiles();
 	}
 
 
-	internal static bool IsContained( string root, string path )
-	{
-		var prefix = Path.TrimEndingDirectorySeparator( Path.GetFullPath( root ) ) + Path.DirectorySeparatorChar;
-		var full = Path.GetFullPath( path );
-		return full.StartsWith( prefix, StringComparison.OrdinalIgnoreCase );
-	}
+	internal static bool IsContained( string root, string path ) => OwnedAssetFile.IsContained( root, path );
 
 	private static void EnsureContained( string root, string path )
 	{
@@ -353,41 +313,7 @@ internal sealed class ModelImportTransaction
 
 	private static string JoinAsset( string directory, string name ) => $"{directory.TrimEnd( '/' )}/{name}";
 
-	[DllImport( "kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true )]
-	[return: MarshalAs( UnmanagedType.Bool )]
-	private static extern bool CreateDirectoryW( string path, IntPtr securityAttributes );
-	[DllImport( "kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CreateFileW" )]
-	private static extern SafeFileHandle CreateFileHandle( string fileName, uint desiredAccess, uint shareMode,
-		IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile );
-	[DllImport( "kernel32.dll", SetLastError = true )]
-	[return: MarshalAs( UnmanagedType.Bool )]
-	private static extern bool GetFileInformationByHandle( SafeFileHandle handle, out ByHandleFileInformation information );
 
-	[StructLayout( LayoutKind.Sequential )]
-	private struct ByHandleFileInformation
-	{
-		public uint FileAttributes;
-		public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
-		public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
-		public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
-		public uint VolumeSerialNumber;
-		public uint FileSizeHigh;
-		public uint FileSizeLow;
-		public uint NumberOfLinks;
-		public uint FileIndexHigh;
-		public uint FileIndexLow;
-	}
-	[StructLayout( LayoutKind.Sequential )]
-	private struct FileDispositionInfo
-	{
-		[MarshalAs( UnmanagedType.Bool )]
-		public bool DeleteFile;
-	}
-
-	[DllImport( "kernel32.dll", SetLastError = true )]
-	[return: MarshalAs( UnmanagedType.Bool )]
-	private static extern bool SetFileInformationByHandle( SafeFileHandle handle, int fileInformationClass,
-		ref FileDispositionInfo fileInformation, uint bufferSize );
 
 
 

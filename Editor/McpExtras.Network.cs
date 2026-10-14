@@ -113,9 +113,9 @@ public static partial class ExtrasTools
 	}
 
 	/// <summary>
-	/// Refuse local-client host migration before launching anything. Installed engine 26.09.08e
-	/// chooses successors from Steam lobby membership, which synthetic loopback clients cannot join,
-	/// and exposes no supported API that can target or certify a local successor.
+	/// Refuse local-client host migration before launching anything. This guard was established
+	/// on engine 26.09.08e, whose Steam successor selection could not certify a synthetic client.
+	/// Retained until targeted successor ownership and native handoff are verified on newer builds.
 	/// </summary>
 	[McpTool( "x_network_migrate_to_new_instance" )]
 	public static Task<NetworkState> MigrateNetworkToNewInstance( bool? windowed = null, int timeoutSeconds = 120 )
@@ -127,7 +127,7 @@ public static partial class ExtrasTools
 		if ( !IsStableHosting() || GetRemoteConnections().Length != 0 )
 			throw new Exception( "Migration requires a hosting session with no remote peers." );
 
-		throw new Exception( "The installed engine cannot migrate hosting to a synthetic local client; no process was launched and the editor remains connected." );
+		throw new Exception( "Targeted migration to a synthetic local client has not been verified for this tool; no process was launched and the editor remains connected." );
 	}
 
 	/// <summary>

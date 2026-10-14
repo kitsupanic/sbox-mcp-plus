@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$EmbeddedRoot, [switch]$SelfTest)
+param([string]$EmbeddedRoot, [switch]$SelfTest, [switch]$InventoryOnly)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $canonical = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -39,6 +39,10 @@ function CheckInventory([string]$Root) {
     foreach($name in $names) { if(-not $name.StartsWith('x_') -or -not $docs.Contains($name)) { throw "Undocumented/unprefixed tool: $name" } }
     "PASS inventory: $($names.Count) unique documented generic tools"
 }
+if($InventoryOnly) {
+    CheckInventory $canonical
+    exit 0
+}
 if($SelfTest) {
     $fixture = Join-Path ([IO.Path]::GetTempPath()) ('sbox-mcp-parity-' + [Guid]::NewGuid().ToString('N'))
     $resolved = [IO.Path]::GetFullPath($fixture)
@@ -74,7 +78,7 @@ if($SelfTest) {
     CheckInventory $canonical
     exit 0
 }
-if([string]::IsNullOrWhiteSpace($EmbeddedRoot)) { throw 'Supply -EmbeddedRoot pointing to Libraries/kitsupanic.sbox_mcp_plus, or use -SelfTest.' }
+if([string]::IsNullOrWhiteSpace($EmbeddedRoot)) { throw 'Use -InventoryOnly for a submodule, -SelfTest for legacy comparison fixtures, or -EmbeddedRoot for an older vendored checkout.' }
 $embedded = [IO.Path]::GetFullPath($EmbeddedRoot)
 if(-not (Test-Path -LiteralPath $embedded -PathType Container)) { throw 'Embedded root does not exist.' }
 $differences = @(Differences $canonical $embedded)

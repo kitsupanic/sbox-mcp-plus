@@ -12,3 +12,7 @@ bin/
 # Editor/asset transients
 .sbox/
 *.generated.*
+
+# Local package-cache marker retained when converting an embedded package to a submodule.
+.version
+__pycache__/

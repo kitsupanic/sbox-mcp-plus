@@ -4,19 +4,47 @@
 
 # sbox-mcp-plus
 
-Extensions to the s&box editor's built-in MCP server. The editor already runs an MCP
-server on `http://127.0.0.1:7269/mcp` and discovers tools from library code live — this
-library adds tools the stock set is missing, so agents get them today instead of waiting
-on engine releases.
+Extra tools for the s&box editor, discovered from library code through `sbox-cli`.
+Facepunch replaced fixed-port HTTP with per-instance named pipes and a stdio MCP bridge;
+the custom `[McpTool]` extension surface remains supported. This library adds guarded
+operations and diagnostics beyond the stock tools. See the [CLI/tool audit](docs/CLI-AUDIT.md)
+for overlap, evidence and the checks required before retiring a workaround.
 
 All tool names are prefixed `x_` so they can never collide with the engine's own once
 the upstream equivalents land.
 
 ## Install
 
-Drop this library into your project's `Libraries/` folder (or install it as a package
-once published). Libraries are scanned at project load — restart the editor after first
-install; after that, edits to the code hotload.
+Add the library as a Git submodule beneath the game project's `Libraries/` folder:
+
+```powershell
+git submodule add https://github.com/kitsupanic/sbox-mcp-plus.git Libraries/kitsupanic.sbox_mcp_plus
+git submodule update --init --recursive
+```
+
+Libraries are scanned at project load — restart the editor after first install;
+after that, edits to the code hotload. Package installation remains an alternative.
+
+## Connect through the CLI
+
+Run clients from the **game project folder** so the CLI selects that project's editor.
+The sample `mcp.json` uses PowerShell 7 and `Scripts/Connect-Sbox.ps1`; when installing
+it in a game, prefix the script path with `Libraries/kitsupanic.sbox_mcp_plus/`.
+The launcher finds the engine through process/user `FACEPUNCH_ENGINE`, then the default
+Steam location. It inherits the MCP streams and forwards the CLI exit code. It only
+uses `--connect`: an unavailable editor fails without opening or owning a new one.
+No fixed port or HTTP URL is used. Enable MCP communication in the project's AI settings.
+
+Clients can also launch `<engine>/bin/managed/sbox-cli.exe` directly with `--connect`.
+Use `sbox-cli --skill sbox-cli` for the installed build's instructions. One-shot examples:
+
+```powershell
+$cli = Join-Path ([Environment]::GetEnvironmentVariable('FACEPUNCH_ENGINE', 'User')) 'bin/managed/sbox-cli.exe'
+& $cli --list
+& $cli --call editor_status
+& $cli --call search_tools '{"query":"x_"}'
+& $cli --call x_editor_status
+```
 
 Find the tools from any MCP client via `list_toolsets` (toolset `extras`) or
 `search_tools`.
@@ -28,13 +56,16 @@ Find the tools from any MCP client via `list_toolsets` (toolset `extras`) or
 Make a scene the active editor tab, opening it from its asset path if it isn't open yet.
 Accepts a scene name or resource path as `list_scenes` reports them.
 
-Why it exists: the stock toolset can read and list background scenes but can't switch
+Original reason: the old stock toolset could read and list background scenes but couldn't switch
 which one is active, and every mutating tool (`set_component`, `save_scene`, `undo`)
 targets the active scene. Worse, an edit aimed at a background scene mutates the object
 but the dirty flag lands on the active tab — the background scene reloads from disk on
 focus and the edit is silently lost. Upstream: issue
 [#11637](https://github.com/Facepunch/sbox-public/issues/11637), PR
-[#11638](https://github.com/Facepunch/sbox-public/pull/11638) (open).
+[#11638](https://github.com/Facepunch/sbox-public/pull/11638).
+Current stock source supplies `open_scene` and `switch_scene`; this compatibility tool
+also handles prefab paths and retains its Play/session guards. Keep it until the
+[native replacement checks](docs/CLI-AUDIT.md) pass on the installed build.
 
 - Explicit no-op message when the scene is already the active tab.
 - Refuses during play mode — `play_stop` first.
@@ -63,11 +94,14 @@ Create, save, and activate a new empty scene at a project-relative `.scene` path
 What the editor is doing right now, from the editor's point of view: active scene tab
 name and path, unsaved-changes flag, open tab count, project ident, play/pause state.
 
-Why it exists: the built-in `editor_status` reports the game scene handle, not the
+Original reason: the old built-in `editor_status` reported the game scene handle, not the
 active editor tab — while editing it returns a placeholder name (`"Scene"`) and a null
 path, and its dirty flag can describe a different scene than its name. Upstream: issue
 [#11639](https://github.com/Facepunch/sbox-public/issues/11639), PR
 [#11640](https://github.com/Facepunch/sbox-public/pull/11640) (closed unmerged).
+
+Current stock source now reads `SceneEditorSession.Active`; native comparisons remain
+required before retiring this compatibility tool. Its open-tab count is still additional data.
 
 `x_editor_status` reads `SceneEditorSession.Active` — the same source `list_scenes`
 uses — so the two always agree.
@@ -146,12 +180,10 @@ to one child.
 
 ## Known issues
 
-- The built-in `editor_status` is still broken while this library only routes around
-  it — a library can't patch engine-assembly tools. Until upstream fixes it, trust
-  `x_editor_status` or `list_scenes.IsActive`, not `editor_status`'s scene fields.
-- Tool errors arrive with a full .NET stack trace appended after the message. That's
-  the engine MCP server's error formatting (its own tools do the same); the first line
-  is the actionable part.
+- Workaround descriptions record the original defects. Current stock source fixes
+  active-scene status and adds scene switching; installed runtime parity is tracked in
+  [the audit](docs/CLI-AUDIT.md), rather than assumed from source or old issue status.
+- Legacy clients configured for `http://127.0.0.1:7269/mcp` must migrate to the CLI.
 - `x_open_scene` can't target a never-saved scene by path (it has no resource path
   yet) — use its name.
 - `x_camera_screenshot` output detail is capped at the live viewport's resolution in play
@@ -188,12 +220,12 @@ injected, clocks advanced, settings changed, processes launched or scenes modifi
 
 ## Shared-source maintenance and checks
 
-The standalone repository is the canonical generic library. Kampai contains a
-vendored copy, not a second server. See [ownership, differences and verification](docs/MCP-PARITY.md).
-Before promoting a generic change, update both copies and run:
+The submodule is the canonical generic library checkout. Kampai's tools-directory
+alias points to that same checkout, so edits require no file copying. See
+[ownership and submodule workflow](docs/MCP-PARITY.md). Run:
 
 ```powershell
-pwsh -File Tests/Compare-Embedded.ps1 -EmbeddedRoot E:/game_dev/sbox/sbox-kampai-roulette/Libraries/kitsupanic.sbox_mcp_plus
+pwsh -File Tests/Compare-Embedded.ps1 -InventoryOnly
 pwsh -File Tests/Compare-Embedded.ps1 -SelfTest
 dotnet run --project Tests/ModelImport.ContractTests.csproj
 # Focused buffer tests, no engine or Play needed:

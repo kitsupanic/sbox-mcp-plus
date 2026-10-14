@@ -10,5 +10,8 @@
   "EditorReferences": null,
   "Mounts": null,
   "IsStandaloneOnly": false,
+  "AI": {
+    "EnableMcpCommunication": true
+  },
   "Metadata": {}
 }

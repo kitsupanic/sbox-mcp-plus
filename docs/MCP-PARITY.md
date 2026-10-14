@@ -1,64 +1,66 @@
-# Generic MCP parity and ownership
+# Generic library ownership and submodule workflow
 
-Comparison baseline: standalone `e046091`; Kampai `55b3d60` (2026-10-09).
-The game embeds this library in `Libraries/kitsupanic.sbox_mcp_plus` (package marker
-`1.0.381524`). The installed editor supplies the MCP HTTP server and discovers the
-library's `extras` tools; `Editor/Playtesting` is a separate game-owned tool surface.
-Neither repository contains repository-local `.codex` memories at this baseline.
-The game instructions and offline-playtesting/parallel-workspace skills were read;
-no memories, OMP configuration, package versions or MCP configuration were edited.
+**Updated:** 2026-10-14. Kampai uses this repository as the Git submodule
+`Libraries/kitsupanic.sbox_mcp_plus`, named `sbox-mcp-plus`. The parent records a
+commit and the portable remote `https://github.com/kitsupanic/sbox-mcp-plus.git`.
+The editor discovers its `extras` tools through `sbox-cli`; no second server runs.
 
-## Reconciled reusable work
+## One local working checkout
 
-| Area | Initial difference | Current ownership |
-|---|---|---|
-| `McpExtras.cs`, `OwnedAssetFile.cs` | Game-only exclusive diagnostic-scene reservation, ancestry locks, identity/length/SHA-256 handoff verification; retained committed evidence on engine failure | Generic, synchronized |
-| `ModelImportTransaction.cs` | Game extracted common handle ownership/filename validation into `OwnedAssetFile`; import keeps its flush/close handoff | Generic, synchronized; no claim that import now uses scene handoff hashing |
-| `Tests/Program.cs` | Game had 12 additional scene ownership/race regressions | Generic, synchronized; six bounded trace regressions added |
-| Other original C# files | Import wrappers, skeleton, backend, networking and process ownership were already identical | Generic, synchronized without behavioral rewrite |
-| `McpExtras.Input.cs`, `InputTraceBuffer.cs` | Focus/input/camera observation concepts existed only inside game diagnostics | Generic raw observation extracted; bounded editor-frame recorder added |
-| Shared docs and harness | Scene documentation and tests had drifted; game omitted portable harness project | Synchronized; hand-maintained harness explicitly unignored locally |
+On the current machine, `S:/game-dev/sbox/tools/sbox-mcp-plus` is a Windows directory
+junction to `S:/game-dev/sbox/games/sbox-kampai-roulette/Libraries/kitsupanic.sbox_mcp_plus`.
+Both paths address the same files and repository. Edit either path; no copy/parity
+synchronization or background sync is needed. The junction is machine-local and
+uncommitted. Relocating/deleting the game checkout affects the alias; check its
+target before filesystem cleanup.
 
-Standalone owns future generic fixes. Port a reviewed generic fix to the vendored
-copy in the same work item; run `Tests/Compare-Embedded.ps1` before handoff. The check
-compares all direct `Editor/*.cs`, test `.cs`/`.ps1`/`.csproj`, test ignore rules, usage
-docs and this document; only CRLF/LF differences are normalized. Added/missing shared
-files fail, duplicate or undocumented tool names fail, and game dependencies fail.
-`-SelfTest` exercises equal, line-ending, modified, missing and additional source
-fixtures. It never synchronizes or overwrites files for the operator.
+Collaborators use normal submodules and need no junction:
 
-## Deliberate differences and exclusions
+```powershell
+git clone --recurse-submodules <kampai-repository-url>
+# Or from an existing game checkout:
+git submodule update --init --recursive
+```
 
-- Engine-generated editor projects retain machine-specific references/output paths;
-  never copy one repository's generated project into the other. Package marker,
-  sbproj metadata, MCP configs, art and project settings are outside parity scope.
-- Kampai `PlaytestTools`, `NativePlaytestTools`, `WorldInputPlaytestTools` and their
-  supervisors drive its tutorial, bot sessions, settings/HUD, glasses and Steal.
-  They remain game-owned, including session/host/token/lease and resource guards.
-- Kampai `NativeInputObservation`, `NativeInputTrace` and validation entry points
-  retain HUD ordering, consumed-look hooks, game state, eligibility and adapter
-  provenance. The generic tools observe engine values only; they cannot replace
-  these integration assertions or certify a physical mouse/controller.
-- The synthetic `WorldPlaytestInput` adapter modifies production consumers under a
-  game-specific lease and disables Career. It is not a generic input tool and is
-  deliberately not imported. Neither are accelerated clocks or direct gameplay intents.
-- Settings persistence fixtures and standalone export/startup/profile tools rely on
-  game-specific services and paths. The known crashing export is not launched.
-- The process worker guard has related ownership principles, but is not a drop-in
-  replacement for the library's already-identical `OwnedLocalInstance` implementation.
-  No process/network launch or termination behavior was changed.
+Commit generic changes inside the submodule first, push when authorized, then
+stage/commit the changed library pointer in the game. A parent commit cannot
+store dirty child files. Push the plugin commit before publishing its parent
+revision. Each game revision pins a reviewed plugin commit; do not automatically
+update from remote. Inspect local changes before submodule updates, particularly
+on detached checkouts. Committing/pushing requires separate user authorization.
 
-## Evidence limits
+Conversion initially registers published commit
+`1be6ee1013aceb2a2f3103aa46f8ef4fa9538253`; the CLI migration is initially
+uncommitted in the child. The old `.version` package-cache marker is preserved
+locally and ignored, rather than presented as the Git revision. Original vendored
+bytes were backed up outside the game before conversion.
 
-The source/contract harness is independent of the editor. Asset pipeline faults use
-fake backends; Windows ownership tests operate on temporary fixture files. Buffer
-fixtures test bounds, exact tokens, pagination, terminal retention and context/time
-transitions, not sampling order inside the engine. Generic raw traces record once per
-editor frame, not an atomic game/HUD frame. Scene identity is observed each callback;
-this does not constitute game session ownership or detect unseen stop/restart cycles.
+## Responsibilities and checks
 
-Use the installed editor MCP inventory and read-only project/scene/Play/compile
-preflight before runtime checks. Preserve user Play and unsaved scenes. If tools are
-unloaded or MCP is unavailable, report runtime verification as unperformed. No runtime
-reload, Play start/stop, scene creation, import or physical-input run is implicit in
-running the parity or contract checks.
+Generic ownership includes all `Editor/*.cs`, contract fixtures, tool usage docs,
+the CLI launcher and [the audit](CLI-AUDIT.md). Game-specific `Editor/Playtesting`,
+HUD/consumed-input hooks, simulated commands, settings fixtures and supervisors
+remain in Kampai. Generic raw input traces cannot certify devices or assert game
+command acceptance.
+
+Run `Tests/Compare-Embedded.ps1 -InventoryOnly` and
+`dotnet run --project Tests/ModelImport.ContractTests.csproj`.
+Legacy `-EmbeddedRoot`/`-SelfTest` modes remain for older vendored users.
+Engine-generated projects are machine-local; do not copy/commit them.
+The previously tracked `Editor/sbox_mcp_plus.editor.csproj` is removed from tracking
+and left on disk for the installed editor to regenerate. The portable contract-test
+project remains tracked. The library explicitly enables MCP communication in its
+project AI settings; its host game's setting still controls that game's connection.
+
+## Historical parity and evidence limits
+
+The 2026-10-09 reconciliation brought generic scene ownership/race safeguards and
+bounded input observation into both repositories. Immediately before conversion,
+comparison passed for all 17 shared files (CRLF/LF normalized) and 20 documented
+tools. This is historical evidence, not an ongoing two-copy maintenance rule.
+
+Fixtures use temporary Windows files, fake asset backends and buffer state; they
+do not prove native pipeline/sampling behavior. Symlink creation needs existing
+privilege; its failures remain environment blockers. Use native CLI project,
+scene, unsaved-work, Play and compile preflight. Preserve user scenes and Play;
+an attach-only connection does not authorize their disposal.

@@ -142,9 +142,10 @@ public static partial class ExtrasTools
 	/// <summary>
 	/// What the editor is doing right now - which project is open, which scene tab is active and
 	/// whether it has unsaved changes, and whether play mode is running or paused. ActiveScene here
-	/// is the editor's active tab, which is what the scene tools edit; the built in editor_status
-	/// reports the running game's scene instead and can disagree while playing. Follow up with
-	/// scene_tree for the hierarchy, or x_open_scene to switch tabs.
+	/// is the editor's active tab, which is what the scene tools edit. Older stock versions reported
+	/// the running game's scene instead; current stock source also uses the editor session.
+	/// This compatibility tool additionally counts open tabs. Follow up with scene_tree for the
+	/// hierarchy, or x_open_scene to switch tabs.
 	/// </summary>
 	[McpTool.ReadOnly( "x_editor_status" )]
 	public static EditorStatusExtras GetEditorStatus()

@@ -2,7 +2,7 @@
 
 This repository is the shared generic library. Make reusable tool changes here;
 keep game-specific playtesting, HUD hooks, and gameplay assertions in the game.
-For the existing consumer checkout and submodule workflow, see
+For library ownership and the submodule workflow, see
 [ownership and maintenance](MCP-PARITY.md).
 
 ## Local checks
@@ -45,3 +45,18 @@ Custom tools remain in the `extras` toolset with the `x_` prefix.
 Keep the [README](../README.md) tool overview complete when adding tools.
 Put detailed behavior and limits in the [tool reference](TOOL-REFERENCE.md);
 model import contracts remain in the [model reference](../README-model-import.md).
+
+## Project settings
+
+This editor-tool library does not need gameplay input, collision, or platform
+defaults. Configure those in the consuming game. `ProjectSettings/` is ignored
+here because opening the library directly in the editor can regenerate defaults.
+
+The removal was checked against the local s&box engine source:
+`Project.CreateFolderFileSystem` allows absent folders,
+`BaseFileSystem.Mount` skips null filesystems, and `ProjectSettings.Load<T>`
+creates defaults when a config is missing. The editor's
+`FileSystem.InitializeFromProject` selects the active project's settings folder;
+`StartupLoadProject.ExportSettings` recreates missing defaults for that project.
+No plugin code refers to the removed config files. This is source inspection,
+not an installed-editor smoke test.

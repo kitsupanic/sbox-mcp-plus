@@ -91,10 +91,10 @@ Successful observed-state example:
 {
   "Succeeded": true,
   "Stage": "complete",
-  "SourceAsset": "models/kampai/player/player.fbx",
-  "ModelAsset": "models/kampai/player/player.vmdl",
-  "CopiedFiles": ["models/kampai/player/player.fbx"],
-  "GeneratedFiles": ["models/kampai/player/.sbox-mcp-import.json", "models/kampai/player/player.vmdl"],
+  "SourceAsset": "models/characters/player/player.fbx",
+  "ModelAsset": "models/characters/player/player.vmdl",
+  "CopiedFiles": ["models/characters/player/player.fbx"],
+  "GeneratedFiles": ["models/characters/player/.sbox-mcp-import.json", "models/characters/player/player.vmdl"],
   "SourceRegistered": true,
   "ModelRegistered": true,
   "Compilation": {
@@ -115,7 +115,7 @@ Successful observed-state example:
   },
   "WriterState": "unconfirmed",
   "FurtherImportsBlocked": false,
-  "PendingWriterPaths": ["models/kampai/player", "models/kampai/player/player.fbx", "models/kampai/player/player.vmdl"],
+  "PendingWriterPaths": ["models/characters/player", "models/characters/player/player.fbx", "models/characters/player/player.vmdl"],
   "UnresolvedReferences": [], "Warnings": [], "Error": null,
   "RollbackStatus": "not_needed", "PartialPaths": []
 }
@@ -133,7 +133,7 @@ One process-local nonblocking gate protects only active MCP import calls. Every 
 
 Historical retained-import evidence is separate from the gate. It contains transaction identity, target directory, source/model paths, writer state and pending paths. It survives supported hotload transfer and can be reconstructed from `.sbox-mcp-import.json` markers. Historical records never set the active-request flag.
 
-The legacy giant-lid retained gate may be migrated only after the original MCP invocation is known to have returned. Migration preserves its marker and assets byte-for-byte, records the directory as occupied and `WriterState=unconfirmed`, and clears only the obsolete request-lock state. This is not writer-shutdown evidence or reconciliation.
+A legacy retained-import gate may be migrated only after the original MCP invocation is known to have returned. Migration preserves its marker and assets byte-for-byte, records the directory as occupied and `WriterState=unconfirmed`, and clears only the obsolete request-lock state. This is not writer-shutdown evidence or reconciliation.
 
 A failed/corrupt hotload transfer remains fail-closed for request execution until marker reconstruction succeeds. A normal versioned transfer preserves whether an active invocation existed; historical pending paths alone never become active-request state.
 
@@ -192,28 +192,35 @@ Complete-field inspection failure returns null with a bounded reason; inspected 
 2. Concurrent active calls serialize; a concurrent dispatch receives `ImportBusy` without mutation.
 3. Every completed invocation releases the request lock, including post-engine success and failure with `WriterState=unconfirmed`.
 4. Same-directory, nested, reverse-overlap, marker-owned and registered-output collisions refuse; fresh siblings are admitted.
-5. The existing giant-lid marker/assets remain byte-for-byte unchanged while its legacy gate becomes historical evidence after confirmed invocation completion.
+5. Existing retained-import markers and assets remain byte-for-byte unchanged while a legacy gate becomes historical evidence after confirmed invocation completion.
 6. Post-engine fault cases retain all outputs and never invoke asset/filesystem deletion.
 7. Engine-backend faults cover registration, creation, compilation observation and dependency inspection while preserving stage/evidence.
 8. Hotload tests cover versioned active state, historical records, malformed transfer and legacy retained-state migration.
 9. Filesystem tests cover allowlist, limits, growing/partial copies, sentinels and ownership races.
-10. Installed MCP imports giant-lid repeat refusal, then player, bartender, valid OBJ and documented valid DMX into fresh isolated directories.
+10. Installed MCP checks repeat-import refusal for an existing destination, then imports representative FBX, valid OBJ, and documented valid DMX sources into fresh isolated directories.
 11. Stock asset tools cross-check every successful model; limited dependency/material provenance remains explicit.
-12. Skeleton inspection covers player and bartender plus missing lookup.
+12. Skeleton inspection covers rigged and static models plus missing lookup.
 13. Active scene, open tabs and dirty flags remain unchanged around live batches.
 14. Every completed live import reports `WriterState=unconfirmed`, `FurtherImportsBlocked=false` and complete pending paths.
 15. Independent high-risk review approves request release, retention, overlap refusal, hotload migration and honest evidence.
 
 ## Fixtures
 
-```text
-D:/sbox/assets/blender-models-generator/output/giant-lid/giant-lid.fbx
-D:/sbox/assets/blender-models-generator/output/player/player.fbx
-D:/sbox/assets/blender-models-generator/output/bartender/bartender.fbx
-```
+Use representative source files available to the person running the checks:
 
-Use their canonical destinations or first unused `-acceptance-N` siblings. Create a self-contained OBJ triangle externally. DMX requires a documented valid source or supported exporter; never invent its schema.
+- A valid FBX with a known skeleton, attachments, and animations.
+- A static model with known bounds and material groups.
+- A self-contained OBJ triangle created outside the project.
+- A valid DMX from a documented source or supported exporter; never invent its schema.
+- A retained-import marker and its assets for legacy-state migration and repeat-refusal checks.
+
+Import each source into a fresh isolated destination. Record the source provenance
+and chosen paths with the validation results, rather than relying on machine-local
+fixture paths.
 
 ## Completion
 
-Feature completion requires all revised checks and successful installed-editor FBX/OBJ/DMX imports. Kampai readiness separately requires actual player/bartender rig and eye-material evidence. Schema nullability remains a separately reported engine limitation and is not changed by this v1 behavior revision.
+Feature completion requires all acceptance checks and successful installed-editor
+FBX/OBJ/DMX imports. Projects that depend on particular rigs or materials must
+verify those requirements separately. Schema nullability remains a separately
+reported engine limitation and is not changed by this v1 behavior revision.

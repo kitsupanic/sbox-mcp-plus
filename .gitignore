@@ -16,3 +16,6 @@ bin/
 # Local package-cache marker retained when converting an embedded package to a submodule.
 .version
 __pycache__/
+
+# Gameplay settings belong to the host game; opening this library may regenerate defaults.
+/ProjectSettings/

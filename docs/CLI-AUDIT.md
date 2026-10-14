@@ -67,8 +67,7 @@ python Tests/Test-CliTransport.py --engine <engine-directory>
 python Tests/Test-CliTransport.py --engine <engine-directory> --launch
 ```
 
-The smoke does not pass the retirement scenarios above. Current results are recorded
-in Kampai's 2026-10-14 CLI/submodule journal.
+The smoke does not pass the retirement scenarios above. The recorded transport smoke results follow.
 
 On installed build **26.10.13**, the temporary minimal-game smoke passed the CLI
 handshake, PowerShell byte-stream relay, idle successful compilation with zero errors,

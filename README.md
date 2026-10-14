@@ -164,6 +164,8 @@ and installed-runtime verification are documented in the
 
 ## Further documentation
 
+- [Contributing](CONTRIBUTING.md) — report a problem or submit a fix.
+- [Agent guidance](AGENTS.md) — help your assistant diagnose issues and prepare contributions.
 - [Tool reference](docs/TOOL-REFERENCE.md) — detailed behavior, guards, and workaround history.
 - [Model import reference](README-model-import.md) — inputs, results, compilation evidence, and failure handling.
 - [CLI/tool audit](docs/CLI-AUDIT.md) — compatibility and native replacement checks.

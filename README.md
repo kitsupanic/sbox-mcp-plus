@@ -101,6 +101,7 @@ For complete behavior and limits, see the [tool reference](docs/TOOL-REFERENCE.m
 | `x_camera_screenshot` | Capture a scene camera, preserving UI text when resizing a capture in Play. |
 | `x_camera_look_at` | Aim an active-scene camera at a world-space point, with undo. |
 | `x_set_network_mode` | Set an active-scene object's saved networking mode to `Never`, `Object`, or `Snapshot`, with undo. |
+| `x_compile_scene` | Run Scene > Compile Scene on the saved active scene, report the result, and remove unreferenced compiled generations. |
 
 ### Networking and local clients
 

@@ -70,6 +70,40 @@ Set an active-scene game object's saved networking mode to `Never`, `Object`, or
 `Snapshot` by GUID. Refuses play mode and missing/background objects, records one undo
 step, and returns the resulting mode.
 
+### `x_compile_scene`
+
+Compile the active scene through the editor's own `SceneCompileSession`. This is the same path
+as Scene > Compile Scene (F9). The stock MCP tools have no scene-compile action.
+
+**Refusals:** The tool refuses in each of these cases:
+- Play mode is running.
+- No tab is active, or the active tab is a prefab.
+- The scene has unsaved changes.
+- A compile is already running.
+- The editor reports that it can't compile.
+
+**Waiting:** The tool waits for completion for up to `timeoutSeconds` (default 600). On timeout it requests cancellation and reports the status.
+
+**Result:** The tool returns:
+- the editor's status (`Done`, `Nothing to compile`, `Failed` or `Cancelled`), error and summary
+- scan counts
+- warnings, with the owning object's name
+- the compile log
+- every generation folder under `<scene>_scene_data/compiled/`, with whether the compiled scene file references it
+
+**Stale generations:** The installed engine (26.10.13) intends to delete previous generations after each compile. `SceneCompiler.CleanupPreviousGenerations` does this through `FileSystem.Mounted`, but that filesystem is read-only in the editor. The cleanup fails with `Could not clean up staged scene resources … This filesystem is read-only`, so old generations accumulate. Publishing collects all of them, together with the models and materials they reference, which can include assets the current scene no longer uses.
+
+With `removeStale` (default `true`), the tool finishes that cleanup on disk after a `Done` compile. It deletes only folders that meet all of these conditions:
+- The folder sits directly in that scene's `compiled/` folder.
+- Its name is a 32-hex generation id.
+- The compiled scene does not reference it.
+
+Nothing is deleted when the compiled scene references no generation. Loose files in `compiled/` are left alone. The result lists `RemovedGenerations` and any `Notes`.
+
+Deleting the generation that was live before the compile makes the resource system log one `ERROR_FILEOPEN` warning per mesh it had loaded from that folder. The current generation is unaffected.
+
+**Verification on 26.10.13:** A 17-mesh scene compiled in about 0.5 s. Two stale generations were removed. All current meshes load through `Model.Load`.
+
 ### `x_camera_screenshot`
 
 Render a scene camera to an image with UI text intact. Same arguments as the built-in

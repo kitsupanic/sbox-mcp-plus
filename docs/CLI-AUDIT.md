@@ -78,3 +78,24 @@ exit 1, diagnostics on stderr, empty stdout. Stock and extra status agreed on th
 The earlier inheritance-only wrapper timed out; the explicit byte relay supersedes it.
 `python Tests/test_cli_transport.py` protects against accepting a previous successful
 compile while a new compilation remains active past the deadline.
+
+### Verification after removing library ProjectSettings
+
+On **2026-10-14**, cleanup commit `d3f624f` was verified on installed engine build
+**26.10.13** using a temporary `game.minimal` project. Its library copy matched
+all 11 source/project files in the checkout (10 editor C# files and the `.sbproj`).
+The library's `ProjectSettings/` folder was absent before and after native loading;
+the temporary host game retained its own project settings.
+
+`Tests/Test-CliTransport.py --engine <engine-directory> --project <temporary-project> --launch`
+passed the MCP handshake, PowerShell relay, settled successful compilation with
+**zero compile errors**, discovery of all **20/20** expected `x_` tools, and an
+`x_editor_status` call. Stock and extra status agreed on the clean `minimal` scene,
+with Play and pause both off. Shutdown completed with protocol-clean EOF, and the
+test-owned editor exited. The repository remained clean.
+
+An initial isolated launch timed out before exposing its MCP endpoint; the retry
+above completed successfully. A separate smoke against an existing game's library
+copy also passed, but that copy still contained settings and was not used as evidence
+for this removal. This check verifies loading and discovery without library settings;
+it does not exercise every tool or establish the retirement scenarios above.
